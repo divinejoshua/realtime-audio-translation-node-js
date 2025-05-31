@@ -5,8 +5,9 @@ import { useState, useRef } from 'react';
 
 interface TranscriptionResponse {
   transcription: string;
-  // Add other expected response fields here
 }
+
+import { useFirebaseHook } from './hooks/useFirebaseHook';
 
 interface AudioMessage {
   id: string;
@@ -23,15 +24,8 @@ export default function Home() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [showRecordingUI, setShowRecordingUI] = useState(false);
   const [targetLanguage, setTargetLanguage] = useState('en');
-  const [messages, setMessages] = useState<AudioMessage[]>([
-    {
-      id: '1',
-      sender: 'John',
-      audioUrl: '/sample-audio-1.mp3',
-      description: 'Meeting notes for the project',
-      timestamp: new Date(Date.now() - 3600000)
-    },
-  ]);
+  const [messages, setMessages] = useState<AudioMessage[]>([]);
+  const { saveTranscription } = useFirebaseHook();
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
 
@@ -94,48 +88,41 @@ export default function Home() {
     const formData = new FormData();
     formData.append('audio', audioBlob, 'recording.wav');
     formData.append('language', targetLanguage);
+    formData.append('sender', name);
 
-    const xhr = new XMLHttpRequest();
-    
-    return new Promise<TranscriptionResponse>((resolve, reject) => {
-      xhr.upload.addEventListener('progress', (event) => {
-        if (event.lengthComputable) {
-          const progress = Math.round((event.loaded / event.total) * 100);
-          setUploadProgress(progress);
-        }
+    try {
+      setIsUploading(true);
+      setUploadProgress(0);
+
+      // First, upload to our API for transcription
+      const response = await fetch('/api/speech-to-text', {
+        method: 'POST',
+        body: formData,
       });
 
-      xhr.addEventListener('load', () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          try {
-            const response: TranscriptionResponse = JSON.parse(xhr.responseText);
-            resolve(response);
-          } catch (error) {
-            console.error('Error parsing response:', error);
-            reject(new Error('Invalid response from server'));
-          }
-        } else {
-          reject(new Error(`Upload failed with status ${xhr.status}`));
-        }
-        setIsUploading(false);
-        setUploadProgress(0);
-      });
+      if (!response.ok) {
+        throw new Error(`Upload failed with status ${response.status}`);
+      }
 
-      xhr.addEventListener('error', () => {
-        reject(new Error('Network error during upload'));
-        setIsUploading(false);
-        setUploadProgress(0);
-      });
+      const result = await response.json() as TranscriptionResponse;
+      
+      // Save to Firebase
+      if (result.transcription) {
+        await saveTranscription({
+          senderName: name,
+          transcription: result.transcription,
+          language: targetLanguage
+        });
+      }
 
-      xhr.addEventListener('abort', () => {
-        reject(new Error('Upload was cancelled'));
-        setIsUploading(false);
-        setUploadProgress(0);
-      });
-
-      xhr.open('POST', '/api/speech-to-text', true);
-      xhr.send(formData);
-    });
+      return result;
+    } catch (error) {
+      console.error('Error uploading audio:', error);
+      throw error;
+    } finally {
+      setIsUploading(false);
+      setUploadProgress(0);
+    }
   };
 
   const stopRecording = async () => {

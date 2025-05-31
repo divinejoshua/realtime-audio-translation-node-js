@@ -1,7 +1,4 @@
 import { NextResponse } from 'next/server';
-import { writeFile } from 'fs/promises';
-import path from 'path';
-import { v4 as uuidv4 } from 'uuid';
 
 
 export async function POST(request: Request) {
@@ -10,6 +7,7 @@ export async function POST(request: Request) {
     const formData = await request.formData();
     const audioFile = formData.get('audio') as File | null;
     const language = formData.get('language') as string || 'en';
+    const sender = formData.get('sender') as string || 'You';
     
     if (!audioFile) {
       console.error('No audio file provided');
@@ -25,7 +23,7 @@ export async function POST(request: Request) {
         success: true,
         transcription,
         language,
-        duration: '2.5s' // Mock duration
+        sender,
       });
     
 }
