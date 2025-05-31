@@ -18,7 +18,22 @@ interface AudioMessage {
 }
 
 export default function Home() {
-  const [name, setName] = useState('');
+  // Load name from localStorage on initial render
+  const [name, setName] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('userName') || '';
+    }
+    return '';
+  });
+  
+  // Update localStorage whenever name changes
+  const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newName = e.target.value;
+    setName(newName);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('userName', newName);
+    }
+  };
   const [isRecording, setIsRecording] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -172,9 +187,9 @@ export default function Home() {
           value={targetLanguage}
           onChange={e => setTargetLanguage(e.target.value)}
         >
-          <option value="en">English</option>
-          <option value="ha">Hausa</option>
-          <option value="sn">Shona</option>
+          <option value="english">English</option>
+          <option value="hausa">Hausa</option>
+          <option value="shona">Shona</option>
         </select>
       </div>
       <div className="mb-6">
@@ -186,7 +201,8 @@ export default function Home() {
           id="name"
           className="block w-full px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
           value={name}
-          onChange={e => setName(e.target.value)}
+          onChange={handleNameChange}
+          placeholder="Enter your name"
         />
       </div>
       
@@ -265,9 +281,10 @@ export default function Home() {
             </div>
           ) : (
             <div className="flex justify-center">
+              <p className='hidden'>{name}</p>
               <button
                 onClick={isRecording ? stopRecording : startRecording}
-                disabled={!name}
+                disabled={!name }
                 className={`w-12 h-12 flex items-center justify-center rounded-full text-white ${
                   isRecording ? 'bg-red-500' : 'bg-blue-500'
                 } ${!name ? 'opacity-50 cursor-not-allowed' : ''}`}
