@@ -12,8 +12,10 @@ interface AudioMessage {
 }
 
 export default function Home() {
+  const [name, setName] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [showRecordingUI, setShowRecordingUI] = useState(false);
+  const [targetLanguage, setTargetLanguage] = useState('en');
   const [messages, setMessages] = useState<AudioMessage[]>([
     {
       id: '1',
@@ -22,13 +24,6 @@ export default function Home() {
       description: 'Meeting notes for the project',
       timestamp: new Date(Date.now() - 3600000)
     },
-    {
-      id: '2',
-      sender: 'You',
-      audioUrl: '/sample-audio-2.mp3',
-      description: 'My response to the meeting notes',
-      timestamp: new Date()
-    }
   ]);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -106,8 +101,36 @@ export default function Home() {
   return (
     <div className="max-w-3xl mx-auto p-4">
       <h1 className="text-2xl font-bold mb-6">Audio Messages</h1>
+      <div className="mb-6">
+        <label htmlFor="targetLanguage" className="block mb-2 text-sm font-medium text-gray-700">
+          Target Language
+        </label>
+        <select
+          id="targetLanguage"
+          className="block w-full px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+          value={targetLanguage}
+          onChange={e => setTargetLanguage(e.target.value)}
+        >
+          <option value="en">English</option>
+          <option value="ha">Hausa</option>
+          <option value="sn">Shona</option>
+        </select>
+      </div>
+      <div className="mb-6">
+        <label htmlFor="name" className="block mb-2 text-sm font-medium text-gray-700">
+          Your Name
+        </label>
+        <input
+          type="text"
+          id="name"
+          className="block w-full px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+          value={name}
+          onChange={e => setName(e.target.value)}
+        />
+      </div>
       
       {/* Messages List */}
+      <h2 className="text-2xl font-bold mb-6">Conversations</h2>
       <div className="space-y-6 mb-24">
         {messages.map((message) => (
           <div key={message.id} className="border-b pb-4">
@@ -168,9 +191,10 @@ export default function Home() {
             <div className="flex justify-center">
               <button
                 onClick={isRecording ? stopRecording : startRecording}
-                className={`w-12 h-12 flex items-center justify-center text-white ${
+                disabled={!name}
+                className={`w-12 h-12 flex items-center justify-center rounded-full text-white ${
                   isRecording ? 'bg-red-500' : 'bg-blue-500'
-                }`}
+                } ${!name ? 'opacity-50 cursor-not-allowed' : ''}`}
                 aria-label={isRecording ? 'Stop recording' : 'Start recording'}
               >
                 <svg 
