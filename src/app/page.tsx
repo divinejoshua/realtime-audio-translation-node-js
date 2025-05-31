@@ -1,19 +1,17 @@
 
 "use client";
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 
 interface TranscriptionResponse {
   transcription: string;
 }
 
-import { useFirebaseHook } from './hooks/useFirebaseHook';
+import { useFirebaseHook, type FirestoreMessage } from './hooks/useFirebaseHook';
+import { format } from 'date-fns';
 
-interface AudioMessage {
-  id: string;
-  sender: string;
-  audioUrl: string;
-  description: string;
+interface AudioMessage extends FirestoreMessage {
+  audioUrl?: string;
   timestamp: Date;
 }
 
@@ -38,11 +36,44 @@ export default function Home() {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [showRecordingUI, setShowRecordingUI] = useState(false);
-  const [targetLanguage, setTargetLanguage] = useState('en');
+  const [targetLanguage, setTargetLanguage] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const storedTargetLanguage = localStorage.getItem('targetLanguage');
+      return storedTargetLanguage || 'en';
+    }
+    return 'en';
+  });
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('targetLanguage', targetLanguage);
+    }
+  }, [targetLanguage]);
   const [messages, setMessages] = useState<AudioMessage[]>([]);
-  const { saveTranscription } = useFirebaseHook();
+  const { saveTranscription, fetchMessages } = useFirebaseHook();
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+
+  // Fetch messages from Firestore on component mount
+  useEffect(() => {
+    if (!fetchMessages) return;
+    
+    const unsubscribe = fetchMessages((firestoreMessages) => {
+      const formattedMessages = firestoreMessages.map(msg => ({
+        ...msg,
+        timestamp: msg.date?.toDate() || new Date(),
+        senderName: msg.senderName || 'Anonymous',
+        transcription: msg.transcription || '',
+        audioUrl: undefined // No audio URL for Firestore messages
+      } as AudioMessage));
+      setMessages(formattedMessages);
+    });
+
+    // Cleanup subscription on unmount
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, [fetchMessages]);
 
   const startRecording = async () => {
     try {
@@ -170,16 +201,19 @@ export default function Home() {
     }
   };
 
+  // Format time helper function
   const formatTime = (date: Date) => {
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return format(date, 'h:mm a');
   };
+  
+  // handleNameChange is already defined above, removing duplicate
 
   return (
     <div className="max-w-3xl mx-auto p-4">
       <h1 className="text-2xl font-bold mb-6">Audio Messages</h1>
       <div className="mb-6">
         <label htmlFor="targetLanguage" className="block mb-2 text-sm font-medium text-gray-700">
-          Target Language
+          Target Language <span className="text-gray-500 hidden">{targetLanguage}</span>
         </label>
         <select
           id="targetLanguage"
@@ -187,9 +221,9 @@ export default function Home() {
           value={targetLanguage}
           onChange={e => setTargetLanguage(e.target.value)}
         >
-          <option value="english">English</option>
-          <option value="hausa">Hausa</option>
-          <option value="shona">Shona</option>
+          <option value="en">English</option>
+          <option value="ha">Hausa</option>
+          <option value="sh">Shona</option>
         </select>
       </div>
       <div className="mb-6">
@@ -209,22 +243,30 @@ export default function Home() {
       {/* Messages List */}
       <h2 className="text-2xl font-bold mb-6">Conversations</h2>
       <div className="space-y-6 mb-24">
-        {messages.map((message) => (
-          <div key={message.id} className="border-b pb-4">
-            <div className="font-medium">{message.sender}</div>
-            <div className="text-sm text-gray-500 mb-1">
-              {message.timestamp.toLocaleDateString()} at {formatTime(message.timestamp)}
-            </div>
-            <audio 
-              src={message.audioUrl} 
-              controls 
-              className="w-full mt-1 mb-2"
-            />
-            <div className="text-gray-700">
-              {message.description}
-            </div>
+        {messages.length === 0 ? (
+          <div className="text-center py-8 text-gray-500">
+            No messages yet. Record your first message!
           </div>
-        ))}
+        ) : (
+          messages.map((message) => (
+            <div key={message.id} className="border-b pb-4">
+              <div className="flex justify-between items-center">
+                <span className="font-medium">{message.senderName || 'Anonymous'}</span>
+                <span className="text-sm text-gray-500">
+                  {format(message.timestamp, 'MMM d, yyyy h:mm a')}
+                </span>
+              </div>
+              <div className="mt-2 p-3 bg-gray-50 rounded-lg">
+                <p className="text-gray-800">{message.transcription}</p>
+                <div className="mt-2 flex items-center text-sm text-gray-500">
+                  <span className="inline-block px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full text-xs">
+                    {message.language}
+                  </span>
+                </div>
+              </div>
+            </div>
+          ))
+        )}
       </div>
 
       {/* Progress Bar */}

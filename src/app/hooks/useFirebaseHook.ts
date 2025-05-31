@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, orderBy, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase/firebase';
 
 export interface TranscriptionData {
@@ -7,6 +7,14 @@ export interface TranscriptionData {
   transcription: string;
   language: string;
   date: Date;
+}
+
+export interface FirestoreMessage {
+  id: string;
+  senderName: string;
+  transcription: string;
+  language: string;
+  date: { toDate: () => Date }; // Firestore timestamp
 }
 
 export const useFirebaseHook = () => {
@@ -61,8 +69,40 @@ export const useFirebaseHook = () => {
     };
   }
 
+  // Function to fetch messages
+  const fetchMessages = useCallback((callback: (messages: FirestoreMessage[]) => void) => {
+    if (!db) {
+      return () => {};
+    }
+    
+    try {
+      const q = query(
+        collection(db, 'transcriptions'),
+        orderBy('date', 'desc')
+      );
+      
+      const unsubscribe = onSnapshot(q, (querySnapshot) => {
+        const messages = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as FirestoreMessage[];
+        
+        callback(messages);
+      }, (error) => {
+        console.error('Error fetching messages:', error);
+        setError(error instanceof Error ? error : new Error('Failed to fetch messages'));
+      });
+      
+      return unsubscribe;
+    } catch (error) {
+      console.error('Error setting up messages listener:', error);
+      return () => {};
+    }
+  }, []);
+
   return {
     saveTranscription,
+    fetchMessages,
     isSaving,
     error,
   };

@@ -14,7 +14,7 @@ export async function POST(request: Request) {
     
     const formData = await request.formData();
     const audioFile = formData.get('audio') as File | null;
-    const language = formData.get('language') as string || 'english';
+    const language = 'en';
     const sender = formData.get('sender') as string || 'You';
     
     if (!audioFile) {
