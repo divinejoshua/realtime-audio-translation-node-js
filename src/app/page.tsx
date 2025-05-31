@@ -3,6 +3,11 @@
 
 import { useState, useRef } from 'react';
 
+interface TranscriptionResponse {
+  transcription: string;
+  // Add other expected response fields here
+}
+
 interface AudioMessage {
   id: string;
   sender: string;
@@ -14,6 +19,8 @@ interface AudioMessage {
 export default function Home() {
   const [name, setName] = useState('');
   const [isRecording, setIsRecording] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [showRecordingUI, setShowRecordingUI] = useState(false);
   const [targetLanguage, setTargetLanguage] = useState('en');
   const [messages, setMessages] = useState<AudioMessage[]>([
@@ -41,20 +48,38 @@ export default function Home() {
         }
       };
 
-      mediaRecorder.onstop = () => {
+      mediaRecorder.onstop = async () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
         const audioUrl = URL.createObjectURL(audioBlob);
         
-        // In a real app, you would upload the audio to your server here
-        const newMessage: AudioMessage = {
-          id: Date.now().toString(),
-          sender: 'You',
-          audioUrl,
-          description: 'New audio message',
-          timestamp: new Date()
-        };
-        
-        setMessages(prev => [...prev, newMessage]);
+        try {
+          // Upload the audio file
+          const response = await uploadAudio(audioBlob);
+          
+          const newMessage: AudioMessage = {
+            id: Date.now().toString(),
+            sender: name || 'You',
+            audioUrl,
+            description: response.transcription || 'Audio message',
+            timestamp: new Date()
+          };
+          
+          setMessages(prev => [...prev, newMessage]);
+        } catch (error) {
+          console.error('Error uploading audio:', error);
+          // Add message even if upload fails, but mark it as failed
+          const newMessage: AudioMessage = {
+            id: Date.now().toString(),
+            sender: name || 'You',
+            audioUrl,
+            description: 'Failed to transcribe audio',
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, newMessage]);
+        } finally {
+          setIsUploading(false);
+          setUploadProgress(0);
+        }
       };
 
       mediaRecorder.start();
@@ -65,12 +90,61 @@ export default function Home() {
     }
   };
 
-  const stopRecording = () => {
+  const uploadAudio = async (audioBlob: Blob): Promise<TranscriptionResponse> => {
+    const formData = new FormData();
+    formData.append('audio', audioBlob, 'recording.wav');
+    formData.append('language', targetLanguage);
+
+    const xhr = new XMLHttpRequest();
+    
+    return new Promise<TranscriptionResponse>((resolve, reject) => {
+      xhr.upload.addEventListener('progress', (event) => {
+        if (event.lengthComputable) {
+          const progress = Math.round((event.loaded / event.total) * 100);
+          setUploadProgress(progress);
+        }
+      });
+
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const response: TranscriptionResponse = JSON.parse(xhr.responseText);
+            resolve(response);
+          } catch (error) {
+            console.error('Error parsing response:', error);
+            reject(new Error('Invalid response from server'));
+          }
+        } else {
+          reject(new Error(`Upload failed with status ${xhr.status}`));
+        }
+        setIsUploading(false);
+        setUploadProgress(0);
+      });
+
+      xhr.addEventListener('error', () => {
+        reject(new Error('Network error during upload'));
+        setIsUploading(false);
+        setUploadProgress(0);
+      });
+
+      xhr.addEventListener('abort', () => {
+        reject(new Error('Upload was cancelled'));
+        setIsUploading(false);
+        setUploadProgress(0);
+      });
+
+      xhr.open('POST', '/api/speech-to-text', true);
+      xhr.send(formData);
+    });
+  };
+
+  const stopRecording = async () => {
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
       mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
       setIsRecording(false);
-      setShowRecordingUI(false);
+      setIsUploading(true);
+      setUploadProgress(0);
     }
   };
 
@@ -150,9 +224,24 @@ export default function Home() {
         ))}
       </div>
 
+      {/* Progress Bar */}
+      {isUploading && (
+        <div className="fixed bottom-16 left-0 right-0 bg-gray-100 h-1">
+          <div 
+            className="bg-blue-500 h-full transition-all duration-300 ease-out"
+            style={{ width: `${uploadProgress}%` }}
+          ></div>
+        </div>
+      )}
+
       {/* Footer with Recording UI */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t">
         <div className="max-w-3xl mx-auto p-4">
+          {isUploading && (
+            <div className="text-center text-sm text-gray-500 mb-2">
+              Uploading... {uploadProgress}%
+            </div>
+          )}
           {showRecordingUI ? (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
