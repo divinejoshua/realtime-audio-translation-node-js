@@ -5,21 +5,28 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+type LanguageCode = 'en' | 'ha' | 'sh' | string;
+
 export async function POST(request: Request) {
   try {
-    let { transcript, targetLanguage } = await request.json();
+    const { transcript, sourceLanguage, targetLanguage } = await request.json() as {
+      transcript: string;
+      sourceLanguage: LanguageCode;
+      targetLanguage: LanguageCode;
+    };
 
-    let languages = {
+    const languageMap: Record<LanguageCode, string> = {
       "en": 'English',
       "ha": 'Hausa',
       "sh": 'Shona',
     };
-    targetLanguage = languages[targetLanguage] || targetLanguage;
     
+    const sourceLangName = languageMap[sourceLanguage] || sourceLanguage;
+    const targetLangName = languageMap[targetLanguage] || targetLanguage;
 
-    if (!transcript || !targetLanguage) {
+    if (!transcript || !sourceLanguage || !targetLanguage) {
       return NextResponse.json(
-        { error: 'Transcript and targetLanguage are required' },
+        { error: 'Transcript, sourceLanguage, and targetLanguage are required' },
         { status: 400 }
       );
     }
@@ -29,11 +36,11 @@ export async function POST(request: Request) {
       messages: [
         {
           role: 'system',
-          content: `You are a professional translator. Translate the following text to ${targetLanguage}. Only respond with the translated text, no additional commentary.`
+          content: `You are a professional translator. Translate the following text from ${sourceLangName} to ${targetLangName}. Only respond with the translated text, no additional commentary.`
         },
         {
           role: 'user',
-          content: transcript
+          content: `Original language: ${sourceLangName}\nTarget language: ${targetLangName}\n\nText to translate: "${transcript}"`
         }
       ],
       temperature: 0.3,
