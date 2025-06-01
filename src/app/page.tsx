@@ -13,6 +13,7 @@ import { format } from 'date-fns';
 interface AudioMessage extends FirestoreMessage {
   audioUrl?: string;
   timestamp: Date;
+  translatedText?: string;
 }
 
 export default function Home() {
@@ -54,26 +55,127 @@ export default function Home() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
 
+  // Function to translate text
+  const translateText = async (text: string, targetLang: string): Promise<string> => {
+    try {
+      const response = await fetch('/api/translate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          transcript: text,
+          targetLanguage: targetLang
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Translation failed');
+      }
+
+      const data = await response.json();
+      return data.translatedText || text; // Return original text if translation fails
+    } catch (error) {
+      console.error('Translation error:', error);
+      return text; // Return original text if translation fails
+    }
+  };
+
+  // Effect to translate messages when target language changes
+  useEffect(() => {
+    let isMounted = true;
+
+    const translateMessages = async () => {
+      const updatedMessages = [...messages];
+      let hasChanges = false;
+
+      // Process messages sequentially
+      for (let i = 0; i < updatedMessages.length; i++) {
+        const message = updatedMessages[i];
+        
+        // Skip if already translated or no transcription
+        if (message.translatedText || !message.transcription) continue;
+        
+        // Skip if message is in the target language
+        if (message.language === targetLanguage) {
+          updatedMessages[i] = {
+            ...message,
+            translatedText: message.transcription
+          };
+          hasChanges = true;
+          continue;
+        }
+        
+        try {
+          const translatedText = await translateText(message.transcription, targetLanguage);
+          
+          if (isMounted) {
+            updatedMessages[i] = {
+              ...message,
+              translatedText
+            };
+            hasChanges = true;
+            
+            // Update state after each successful translation
+            setMessages([...updatedMessages]);
+          }
+        } catch (error) {
+          console.error(`Failed to translate message ${i + 1}:`, error);
+          // Continue with next message even if one fails
+        }
+      }
+      
+      // Final update if there were changes but no async operations
+      if (hasChanges && isMounted) {
+        setMessages(updatedMessages);
+      }
+    };
+
+    if (messages.length > 0) {
+      translateMessages();
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, [targetLanguage, messages]);
+
   // Fetch messages from Firestore on component mount
   useEffect(() => {
     if (!fetchMessages) return;
     
-    const unsubscribe = fetchMessages((firestoreMessages) => {
-      const formattedMessages = firestoreMessages.map(msg => ({
-        ...msg,
-        timestamp: msg.date?.toDate() || new Date(),
-        senderName: msg.senderName || 'Anonymous',
-        transcription: msg.transcription || '',
-        audioUrl: undefined // No audio URL for Firestore messages
-      } as AudioMessage));
+    const processMessages = async (firestoreMessages: any[]) => {
+      const formattedMessages = await Promise.all(
+        firestoreMessages.map(async (msg) => {
+          const baseMessage = {
+            ...msg,
+            timestamp: msg.date?.toDate() || new Date(),
+            senderName: msg.senderName || 'Anonymous',
+            transcription: msg.transcription || '',
+            audioUrl: undefined, // No audio URL for Firestore messages
+            translatedText: undefined
+          } as AudioMessage;
+
+          // If message is already in target language, use transcription as is
+          if (msg.language === targetLanguage) {
+            return { ...baseMessage, translatedText: msg.transcription };
+          }
+
+          // Otherwise, translate it
+          const translatedText = await translateText(msg.transcription, targetLanguage);
+          return { ...baseMessage, translatedText };
+        })
+      );
       setMessages(formattedMessages);
-    });
+    };
+    
+    const unsubscribe = fetchMessages(processMessages);
 
     // Cleanup subscription on unmount
     return () => {
       if (unsubscribe) unsubscribe();
     };
-  }, [fetchMessages]);
+  }, [fetchMessages, targetLanguage]);
 
   const startRecording = async () => {
     try {
@@ -257,12 +359,25 @@ export default function Home() {
                 </span>
               </div>
               <div className="mt-2 p-3 bg-gray-50 rounded-lg">
-                <p className="text-gray-800">{message.transcription}</p>
-                <div className="mt-2 flex items-center text-sm text-gray-500">
+                <p className="text-gray-800">
+                  {message.translatedText || message.transcription}
+                </p>
+                <div className="mt-2 flex items-center justify-between text-sm text-gray-500">
                   <span className="inline-block px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full text-xs">
                     {message.language}
                   </span>
+                  {message.translatedText && message.language !== targetLanguage && (
+                    <span className="text-xs text-gray-400">
+                      Translated to {targetLanguage}
+                    </span>
+                  )}
                 </div>
+                {message.translatedText && message.transcription !== message.translatedText && (
+                  <details className="mt-2 text-xs text-gray-500">
+                    <summary className="cursor-pointer">Show original</summary>
+                    <p className="mt-1 p-2 bg-gray-100 rounded">{message.transcription}</p>
+                  </details>
+                )}
               </div>
             </div>
           ))
