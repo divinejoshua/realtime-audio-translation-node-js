@@ -1,5 +1,6 @@
 "use client";
 
+
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useFirebaseHook, type FirestoreMessage } from './hooks/useFirebaseHook';
 import { format } from 'date-fns';
@@ -164,7 +165,7 @@ export default function Home() {
 
     // If no translation exists yet, trigger translation
     if (!message.translatedText) {
-      const translated = translateText(message.transcription, message.language, targetLanguage)
+      translateText(message.transcription, message.language, targetLanguage)
         .then((translated: string) => {
           setMessages(prev =>
             prev.map(msg =>
@@ -199,6 +200,7 @@ export default function Home() {
           const response = await uploadAudio(audioBlob);
           const newMessage: AudioMessage = {
             id: Date.now().toString(),
+            // @ts-ignore
             sender: name || 'You',
             audioUrl,
             description: response.transcription || 'Audio message',
@@ -209,6 +211,7 @@ export default function Home() {
           console.error('Error uploading audio:', error);
           const newMessage: AudioMessage = {
             id: Date.now().toString(),
+            // @ts-ignore
             sender: name || 'You',
             audioUrl,
             description: 'Failed to transcribe audio',

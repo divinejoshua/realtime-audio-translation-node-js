@@ -58,20 +58,10 @@ export const useFirebaseHook = () => {
   }, [isClient]);
 
   // Return a no-op function on server-side
-  if (!isClient) {
-    return {
-      saveTranscription: async () => {
-        console.warn('Firebase operations are not available on server side');
-        return null;
-      },
-      isSaving: false,
-      error: null,
-    };
-  }
-
   // Function to fetch messages
   const fetchMessages = useCallback((callback: (messages: FirestoreMessage[]) => void) => {
-    if (!db) {
+    if (!isClient || !db) {
+      console.warn('Firebase operations are not available on server side');
       return () => {};
     }
     
@@ -98,7 +88,7 @@ export const useFirebaseHook = () => {
       console.error('Error setting up messages listener:', error);
       return () => {};
     }
-  }, []);
+  }, [isClient]);
 
   return {
     saveTranscription,
